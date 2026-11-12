@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Foundation IP Catalog Explorer</title>
+<style>
+  :root { --bg: #0f1117; --card: #1a1d27; --accent: #6c8cff; --text: #e4e6eb; --muted: #9aa0a6; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); }
+  header { padding: 1.5rem 2rem; border-bottom: 1px solid #2a2e3a; display: flex; justify-content: space-between; align-items: center; }
+  h1 { margin: 0; font-size: 1.4rem; }
+  .disclaimer { font-size: 0.75rem; color: var(--muted); max-width: 500px; }
+  .container { display: flex; height: calc(100vh - 70px); }
+  .sidebar { width: 320px; border-right: 1px solid #2a2e3a; overflow-y: auto; padding: 1rem; }
+  .main { flex: 1; overflow-y: auto; padding: 1.5rem 2rem; }
+  .block-card { background: var(--card); border-radius: 10px; padding: 1rem; margin-bottom: 0.75rem; cursor: pointer; border: 1px solid transparent; }
+  .block-card:hover, .block-card.active { border-color: var(--accent); }
+  .block-card h3 { margin: 0 0 0.3rem; font-size: 1rem; }
+  .block-card .cat { font-size: 0.75rem; color: var(--accent); }
+  .tabs { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
+  .tab { padding: 0.4rem 0.8rem; background: #252830; border: none; color: var(--text); border-radius: 6px; cursor: pointer; }
+  .tab.active { background: var(--accent); }
+  pre { background: #12141c; padding: 1rem; border-radius: 8px; overflow-x: auto; font-size: 0.85rem; line-height: 1.4; }
+  .io-table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+  .io-table th, .io-table td { text-align: left; padding: 0.5rem; border-bottom: 1px solid #2a2e3a; }
+  .layout-note { background: #1e2230; padding: 1rem; border-radius: 8px; margin: 1rem 0; font-size: 0.9rem; }
+  .derivative { background: var(--card); padding: 1.5rem; border-radius: 10px; margin-top: 1.5rem; }
+  input, select, textarea, button { background: #252830; border: 1px solid #3a3f50; color: var(--text); padding: 0.5rem; border-radius: 6px; }
+  button { background: var(--accent); border: none; cursor: pointer; font-weight: 600; }
+  button:hover { opacity: 0.9; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Foundation IP Catalog Explorer</h1>
+  <div class="disclaimer">Educational / conceptual models only. Not foundry-qualified. Real PDKs, standard cells, and hard IP are proprietary (TSMC 12nm, Samsung 14nm, GF 12nm).</div>
+</header>
+<div class="container">
+  <div class="sidebar" id="sidebar"></div>
+  <div class="main" id="main">
+    <p>Select a block from the catalog to explore its RTL, I/O, layout notes, and create derivatives.</p>
+  </div>
+</div>
+<script>
+const blocks = [
+  {
+    id: "inv",
+    name: "Inverter (INV)",
+    category: "Standard Cell",
+    description: "Basic CMOS inverter. Multi-drive strength, multi-VT.",
+    rtl: `module inv (\n    input  wire a,\n    output wire y\n);\n    assign y = ~a;\nendmodule`,
+    ports: [
+      {name: "a", dir: "input", width: "1", desc: "Input"},
+      {name: "y", dir: "output", width: "1", desc: "Inverted output"}
+    ],
+    layout: "TSMC 12FFC: 6T-12T cells, ~90-96nm poly. Samsung 14LPP: 9T/10.5T, 78-84nm CPP. GF 12LP: 7.5T HD. Multi-VT (SVT/HVT/LVT)."
+  },
+  {
+    id: "nand2",
+    name: "2-input NAND",
+    category: "Standard Cell",
+    description: "Complex gate for area efficiency.",
+    rtl: `module nand2 (\n    input  wire a, b,\n    output wire y\n);\n    assign y = ~(a & b);\nendmodule`,
+    ports: [
+      {name: "a", dir: "input", width: "1"},
+      {name: "b", dir: "input", width: "1"},
+      {name: "y", dir: "output", width: "1"}
+    ],
+    layout: "Same track-height variants as INV. Prefer short tracks for density."
+  },
+  {
+    id: "dff_ar",
+    name: "DFF with Async Reset",
+    category: "Standard Cell",
+    description: "Edge-triggered flip-flop with active-low async reset.",
+    rtl: `module dff_ar (\n    input  wire clk,\n    input  wire rst_n,\n    input  wire d,\n    output reg  q\n);\n    always @(posedge clk or negedge rst_n) begin\n        if (!rst_n) q <= 1'b0; else q <= d;\n    end\nendmodule`,
+    ports: [
+      {name: "clk", dir: "input", width: "1"},
+      {name: "rst_n", dir: "input", width: "1", desc: "Active-low async reset"},
+      {name: "d", dir: "input", width: "1"},
+      {name: "q", dir: "output", width: "1"}
+    ],
+    layout: "Master-slave or TG FF. Cell height matches library track height. Scan optional."
+  },
+  {
+    id: "pwm",
+    name: "PWM Controller (DCDC Digital)",
+    category: "Power Management",
+    description: "Digital PWM generator for DCDC / PMIC control.",
+    rtl: `module pwm_controller #(\n    parameter WIDTH = 8\n) (\n    input  wire clk,\n    input  wire rst_n,\n    input  wire [WIDTH-1:0] duty,\n    input  wire enable,\n    output reg pwm_out\n);\n    // counter + comparison\nendmodule`,
+    ports: [
+      {name: "clk", dir: "input"},
+      {name: "rst_n", dir: "input"},
+      {name: "duty", dir: "input", width: "WIDTH"},
+      {name: "enable", dir: "input"},
+      {name: "pwm_out", dir: "output"}
+    ],
+    layout: "Soft logic. Analog power FETs / drivers are proprietary hard IP."
+  },
+  {
+    id: "sar_adc",
+    name: "8-bit SAR ADC Controller",
+    category: "Data Conversion",
+    description: "Successive-approximation sequencer and result register.",
+    rtl: `module sar_adc_ctrl (\n    input  wire clk,\n    input  wire rst_n,\n    input  wire start,\n    input  wire cmp_out,\n    output reg [7:0] result,\n    output reg done,\n    output reg sample_en\n);\n    // binary search FSM\nendmodule`,
+    ports: [
+      {name: "start", dir: "input"},
+      {name: "cmp_out", dir: "input", desc: "From analog comparator"},
+      {name: "result", dir: "output", width: "8"},
+      {name: "done", dir: "output"},
+      {name: "sample_en", dir: "output"}
+    ],
+    layout: "Digital soft IP. Capacitive DAC + comparator are hard analog IP."
+  },
+  {
+    id: "cpu16",
+    name: "16-bit RISC CPU Skeleton",
+    category: "Processing",
+    description: "Simple fetch-decode-execute with 8 registers. Basic ADD example.",
+    rtl: `module cpu16_skeleton (\n    input  wire clk,\n    input  wire rst_n,\n    output reg [15:0] addr,\n    input  wire [15:0] instr_data,\n    output reg mem_we,\n    output reg [15:0] mem_wdata,\n    input  wire [15:0] mem_rdata\n);\n    // pc, ir, regfile, FSM\nendmodule`,
+    ports: [
+      {name: "clk", dir: "input"},
+      {name: "rst_n", dir: "input"},
+      {name: "addr", dir: "output", width: "16"},
+      {name: "instr_data", dir: "input", width: "16"},
+      {name: "mem_we", dir: "output"},
+      {name: "mem_wdata", dir: "output", width: "16"},
+      {name: "mem_rdata", dir: "input", width: "16"}
+    ],
+    layout: "Soft IP synthesized into standard cells. Place-and-route with multi-VT library."
+  },
+  {
+    id: "serializer",
+    name: "Digital Serializer (SerDes TX)",
+    category: "SerDes",
+    description: "Parallel-to-serial shift register.",
+    rtl: `module serializer #(\n    parameter WIDTH = 8\n) (\n    input  wire clk,\n    input  wire rst_n,\n    input  wire [WIDTH-1:0] data_in,\n    input  wire load,\n    output reg serial_out\n);\n    // shift register\nendmodule`,
+    ports: [
+      {name: "data_in", dir: "input", width: "WIDTH"},
+      {name: "load", dir: "input"},
+      {name: "serial_out", dir: "output"}
+    ],
+    layout: "Digital soft. Full PHY (drivers, CDR, equalization) is hard IP."
+  }
+];
+
+function renderSidebar() {
+  const sb = document.getElementById('sidebar');
+  sb.innerHTML = '<h3 style="margin-top:0">Catalog</h3>';
+  blocks.forEach(b => {
+    const div = document.createElement('div');
+    div.className = 'block-card';
+    div.innerHTML = `<div class="cat">${b.category}</div><h3>${b.name}</h3><small>${b.description}</small>`;
+    div.onclick = () => showBlock(b.id);
+    sb.appendChild(div);
+  });
+}
+
+function showBlock(id) {
+  const b = blocks.find(x => x.id === id);
+  document.querySelectorAll('.block-card').forEach(c => c.classList.remove('active'));
+  event.currentTarget.classList.add('active');
+
+  const main = document.getElementById('main');
+  main.innerHTML = `
+    <h2>${b.name}</h2>
+    <p>${b.description}</p>
+    <div class="tabs">
+      <button class="tab active" onclick="showTab('rtl')">RTL / Verilog</button>
+      <button class="tab" onclick="showTab('io')">I/O Ports</button>
+      <button class="tab" onclick="showTab('layout')">Layout Notes</button>
+      <button class="tab" onclick="showTab('derive')">Create Derivative</button>
+    </div>
+    <div id="tab-rtl"><pre>${escapeHtml(b.rtl)}</pre></div>
+    <div id="tab-io" class="hidden">
+      <table class="io-table">
+        <tr><th>Port</th><th>Direction</th><th>Width</th><th>Description</th></tr>
+        ${b.ports.map(p => `<tr><td>${p.name}</td><td>${p.dir}</td><td>${p.width||'1'}</td><td>${p.desc||''}</td></tr>`).join('')}
+      </table>
+    </div>
+    <div id="tab-layout" class="hidden">
+      <div class="layout-note"><strong>Conceptual Layout (educational only)</strong><br>${b.layout}</div>
+    </div>
+    <div id="tab-derive" class="hidden">
+      <div class="derivative">
+        <h3>Create Derivative Block</h3>
+        <p>Clone this block and modify parameters / add features.</p>
+        <label>New module name<br><input id="newName" value="${b.id}_deriv" style="width:100%"></label><br><br>
+        <label>Notes / modifications<br><textarea id="notes" rows="4" style="width:100%" placeholder="e.g. Add enable pin, change width, add scan..."></textarea></label><br><br>
+        <button onclick="createDerivative('${b.id}')">Generate Derivative Verilog</button>
+        <pre id="derivOut" style="margin-top:1rem; display:none"></pre>
+      </div>
+    </div>
+  `;
+}
+
+function showTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  event.currentTarget.classList.add('active');
+  ['rtl','io','layout','derive'].forEach(t => {
+    document.getElementById('tab-'+t).classList.toggle('hidden', t !== name);
+  });
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function createDerivative(id) {
+  const b = blocks.find(x => x.id === id);
+  const name = document.getElementById('newName').value || b.id + '_deriv';
+  const notes = document.getElementById('notes').value;
+  const out = document.getElementById('derivOut');
+  out.style.display = 'block';
+  out.textContent = `// Derivative of ${b.name}\n// Modifications: ${notes || 'none'}\n// Educational model only\n\nmodule ${name} (\n    // TODO: add/modify ports based on notes\n);\n    // Base logic from original + your changes\n    // Original RTL reference:\n    /*\n${b.rtl}\n    */\nendmodule\n`;
+}
+
+renderSidebar();
+</script>
+</body>
+</html>
